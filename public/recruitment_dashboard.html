@@ -1,0 +1,1279 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Дашборд подбора</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f7f7f5; color: #1a1a1a; font-size: 14px; }
+.header { background: #fff; border-bottom: 1px solid #e5e5e0; padding: 14px 24px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; }
+.header h1 { font-size: 17px; font-weight: 500; }
+.tabs { display: flex; background: #fff; border-bottom: 1px solid #e5e5e0; padding: 0 24px; overflow-x: auto; }
+.tab { padding: 10px 18px; font-size: 13px; color: #888; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; white-space: nowrap; }
+.tab.active { color: #1a1a1a; border-bottom-color: #1a1a1a; font-weight: 500; }
+.tab:hover:not(.active) { color: #444; }
+.page { display: none; max-width: 980px; margin: 0 auto; padding: 20px 24px; }
+.page.active { display: block; }
+.upload-zone { border: 1.5px dashed #ccc; border-radius: 12px; padding: 28px 24px; text-align: center; background: #fff; cursor: pointer; transition: border-color 0.2s; }
+.upload-zone:hover { border-color: #888; }
+.upload-btn { display: inline-block; margin-top: 10px; padding: 7px 18px; background: #1a1a1a; color: #fff; border-radius: 7px; font-size: 12px; cursor: pointer; }
+.upload-btn.secondary { background: #f0efeb; color: #1a1a1a; }
+.section-title { font-size: 12px; font-weight: 500; color: #888; text-transform: uppercase; letter-spacing: 0.05em; margin: 20px 0 10px; }
+.metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 4px; }
+.metric-card { background: #f0efeb; border-radius: 8px; padding: 12px 14px; }
+.metric-card .label { font-size: 11px; color: #666; margin-bottom: 4px; }
+.metric-card .value { font-size: 22px; font-weight: 500; }
+.metric-card .sub { font-size: 11px; color: #999; margin-top: 2px; }
+.card { background: #fff; border: 0.5px solid #e5e5e0; border-radius: 12px; padding: 18px; margin-bottom: 14px; }
+.filter-row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; align-items: flex-start; }
+select, input[type=text], input[type=date] { padding: 6px 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 12px; background: #fff; color: #1a1a1a; }
+input[type=text] { min-width: 180px; }
+input[type=date] { min-width: 130px; }
+.multi-select-wrap { position: relative; }
+.multi-select-btn { padding: 6px 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 12px; background: #fff; cursor: pointer; white-space: nowrap; min-width: 160px; display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+.multi-select-btn::after { content: '▾'; font-size: 10px; color: #888; }
+.multi-select-dropdown { display: none; position: absolute; top: 100%; left: 0; min-width: 220px; background: #fff; border: 1px solid #ddd; border-radius: 8px; z-index: 50; max-height: 240px; overflow-y: auto; box-shadow: 0 4px 12px rgba(0,0,0,0.1); margin-top: 2px; }
+.multi-select-dropdown.open { display: block; }
+.multi-select-dropdown label { display: flex; align-items: center; gap: 8px; padding: 7px 12px; font-size: 12px; cursor: pointer; }
+.multi-select-dropdown label:hover { background: #f7f7f5; }
+.multi-select-dropdown .ms-all { border-bottom: 1px solid #f0efeb; font-weight: 500; }
+.date-range { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #888; }
+.tbl { width: 100%; border-collapse: collapse; font-size: 12px; }
+.tbl th { text-align: left; padding: 7px 10px; border-bottom: 1px solid #e5e5e0; color: #666; font-weight: 500; white-space: nowrap; position: sticky; top: 0; background: #fff; cursor: pointer; user-select: none; z-index: 2; }
+.tbl th:first-child { position: sticky; top: 0; left: 0; z-index: 3; background: #fff; }
+.tbl td { padding: 7px 10px; border-bottom: 0.5px solid #f0eeea; white-space: nowrap; max-width: 220px; overflow: hidden; text-overflow: ellipsis; }
+.tbl td:first-child { position: sticky; left: 0; background: #fff; z-index: 1; box-shadow: 2px 0 4px rgba(0,0,0,0.04); }
+.tbl tr:hover td { background: #f9f8f6; }
+.tbl tr:hover td:first-child { background: #f9f8f6; }
+.tbl-wrap { overflow-x: auto; max-height: 520px; overflow-y: auto; }
+.badge { display: inline-block; padding: 2px 8px; border-radius: 20px; font-size: 11px; }
+.badge-active { background: #e4f0e8; color: #2d7d4e; }
+.badge-archive { background: #f0efeb; color: #888; }
+.stage-badge { background: #f0efeb; color: #555; }
+.bar-bg { background: #f0efeb; border-radius: 3px; height: 5px; min-width: 60px; }
+.bar-fill { height: 5px; border-radius: 3px; background: #4a7dbd; }
+.bar-fill.warn { background: #d47a2a; }
+.bar-fill.ok { background: #5ba08a; }
+.chart-wrap { position: relative; height: 260px; }
+.chart-wrap-tall { position: relative; height: 320px; }
+.legend { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 10px; font-size: 11px; color: #666; }
+.legend span { display: flex; align-items: center; gap: 4px; }
+.legend .dot { width: 9px; height: 9px; border-radius: 2px; flex-shrink: 0; }
+.vacancy-row { cursor: pointer; }
+.detail-row { display: none; background: #fafaf8; }
+.detail-inner { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; padding: 10px 0; }
+.detail-cell .dl { font-size: 11px; color: #888; margin-bottom: 2px; }
+.detail-cell .dv { font-size: 12px; font-weight: 500; }
+.empty { text-align: center; color: #aaa; padding: 32px; font-size: 13px; }
+.pagination { display: flex; align-items: center; gap: 8px; margin-top: 12px; font-size: 12px; color: #666; padding: 0 18px 12px; }
+.pagination button { padding: 4px 10px; border: 1px solid #ddd; border-radius: 5px; background: #fff; cursor: pointer; font-size: 12px; }
+.pagination button:disabled { opacity: 0.4; cursor: default; }
+.tag { display: inline-block; padding: 1px 6px; background: #f0efeb; border-radius: 4px; font-size: 10px; color: #666; margin-right: 2px; }
+.sort-asc::after { content: ' ↑'; }
+.sort-desc::after { content: ' ↓'; }
+.drop-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.15); z-index: 100; align-items: center; justify-content: center; }
+.drop-overlay.show { display: flex; }
+.drop-inner { background: #fff; border-radius: 16px; padding: 40px 60px; font-size: 16px; font-weight: 500; border: 2px dashed #888; }
+.two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.stage-chip { display:inline-flex;align-items:center;padding:4px 10px;background:#f0efeb;border-radius:20px;font-size:12px;cursor:grab;user-select:none;border:1px solid #e5e5e0;gap:6px; }
+.tt-wrap { position:relative;display:inline-block; }
+.tt-wrap .tt { display:none;position:fixed;z-index:200;background:#1a1a1a;color:#fff;border-radius:8px;padding:10px 14px;font-size:12px;min-width:160px;max-width:280px;max-height:260px;overflow-y:auto;box-shadow:0 4px 16px rgba(0,0,0,0.18);pointer-events:none;line-height:1.6; }
+.tt-wrap:hover .tt { display:block; }
+.tt-num { font-size:18px;font-weight:500;cursor:default;border-bottom:1.5px dashed #ccc;padding-bottom:1px; }
+.tt-num:hover { border-bottom-color:#1a1a1a; }
+.stage-chip:active { cursor:grabbing;opacity:0.7; }
+.stage-drop-zone { min-height:80px;border:1.5px dashed #ddd;border-radius:8px;padding:10px;display:flex;flex-wrap:wrap;gap:6px;align-content:flex-start;transition:background 0.15s; }
+.stage-drop-zone.drag-over { background:#f0f7ff;border-color:#4a7dbd; }
+.group-card { background:#fff;border:0.5px solid #e5e5e0;border-radius:12px;padding:14px; }
+.group-card .group-title { font-size:12px;font-weight:500;margin-bottom:8px;display:flex;align-items:center;gap:6px; }
+.group-dot { width:10px;height:10px;border-radius:50%;flex-shrink:0; }
+.time-label { width: 200px; flex-shrink: 0; color: #444; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.time-bars { flex: 1; display: flex; flex-direction: column; gap: 2px; }
+.time-val { width: 60px; text-align: right; flex-shrink: 0; font-size: 11px; color: #666; }
+.time-val.over { color: #c0552a; font-weight: 500; }
+.info-bar { font-size: 12px; color: #888; margin-bottom: 8px; }
+@media(max-width:640px) { .two-col { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div><h1>Дашборд подбора</h1></div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;" id="reloadBtns"></div>
+</div>
+
+<div class="tabs">
+  <div class="tab active" onclick="switchTab('funnel')">Воронка</div>
+  <div class="tab" onclick="switchTab('candidates')">Кандидаты</div>
+  <div class="tab" onclick="switchTab('efficiency')">Эффективность</div>
+  <div class="tab" onclick="switchTab('settings')">⚙ Настройки этапов</div>
+</div>
+
+<!-- ВОРОНКА -->
+<div class="page active" id="page-funnel">
+  <div id="funnelUpload">
+    <div class="upload-zone" onclick="document.getElementById('fileFunnel').click()">
+      <div style="font-size:28px;margin-bottom:8px;">📊</div>
+      <div style="font-size:14px;font-weight:500;">Аналитика воронки по вакансиям</div>
+      <div style="font-size:12px;color:#888;margin-top:4px;">Загружайте файлы по одному — данные объединяются</div>
+      <div class="upload-btn" style="margin-top:12px;">Выбрать файл</div>
+      <input type="file" id="fileFunnel" accept=".xlsx,.xls" style="display:none">
+    </div>
+    <div id="errFunnel" style="color:#b54a2a;font-size:12px;text-align:center;margin-top:8px;"></div>
+  </div>
+  <div id="funnelDash" style="display:none;">
+    <div class="filter-row" style="margin-top:4px;">
+      <div class="info-bar" id="funnelFilesInfo"></div>
+      <button onclick="clearFunnelData()" style="padding:5px 12px;border:1px solid #ddd;border-radius:6px;background:#fff;font-size:12px;cursor:pointer;color:#b54a2a;margin-left:auto;">✕ Очистить</button>
+    </div>
+    <div class="filter-row">
+      <div class="multi-select-wrap" id="msWrapFRec">
+        <div class="multi-select-btn" onclick="toggleMs('msWrapFRec')" id="msBtnFRec" data-default-label="Все рекрутеры" data-item-name="рекрутеров">Все рекрутеры</div>
+        <div class="multi-select-dropdown" id="msDdFRec"></div>
+      </div>
+      <select id="fStatus"><option value="">Все статусы</option><option value="Активная" selected>Активные</option><option value="Архивная">Архивные</option></select>
+    </div>
+    <div class="filter-row" id="fDateRow" style="display:none;">
+      <div class="date-range">
+        Период (по датам кандидатов): <input type="date" id="fDateFrom" onchange="renderFunnel()"> — <input type="date" id="fDateTo" onchange="renderFunnel()">
+        <button onclick="resetFunnelDates()" style="padding:4px 8px;border:1px solid #ddd;border-radius:5px;background:#fff;font-size:11px;cursor:pointer;">Сбросить</button>
+      </div>
+      <div id="fDateHint" style="font-size:11px;color:#888;align-self:center;"></div>
+    </div>
+    <div class="section-title">Итого по фильтру</div>
+    <div class="metrics" id="metricsRow"></div>
+    <div class="section-title">Воронка по вакансиям</div>
+    <div class="card">
+      <div class="tbl-wrap"><table class="tbl"><thead id="fHead"></thead><tbody id="fBody"></tbody></table></div>
+    </div>
+    <div class="section-title">Ключевые этапы — график</div>
+    <div class="card">
+      <div class="legend" id="chartLegend"></div>
+      <div class="chart-wrap"><canvas id="convChart" role="img" aria-label="Воронка по этапам"></canvas></div>
+    </div>
+  </div>
+</div>
+
+<!-- КАНДИДАТЫ -->
+<div class="page" id="page-candidates">
+  <div id="candUpload">
+    <div class="upload-zone" onclick="document.getElementById('fileCand').click()">
+      <div style="font-size:28px;margin-bottom:8px;">👥</div>
+      <div style="font-size:14px;font-weight:500;">Кандидаты на вакансиях</div>
+      <div style="font-size:12px;color:#888;margin-top:4px;">Все кандидаты по всем вакансиям</div>
+      <div class="upload-btn" style="margin-top:12px;">Выбрать файл</div>
+      <input type="file" id="fileCand" accept=".xlsx,.xls" style="display:none">
+    </div>
+    <div id="errCand" style="color:#b54a2a;font-size:12px;text-align:center;margin-top:8px;"></div>
+  </div>
+  <div id="candDash" style="display:none;">
+    <div class="filter-row" style="margin-top:4px;">
+      <div class="info-bar" id="candFilesInfo"></div>
+      <button onclick="clearCandData()" style="padding:5px 12px;border:1px solid #ddd;border-radius:6px;background:#fff;font-size:12px;cursor:pointer;color:#b54a2a;margin-left:auto;">✕ Очистить</button>
+    </div>
+    <div class="filter-row">
+      <input type="text" id="cSearch" placeholder="Поиск по имени..." oninput="renderCand()">
+      <div class="multi-select-wrap" id="msWrapCVac">
+        <div class="multi-select-btn" onclick="toggleMs('msWrapCVac')" id="msBtnCVac" data-default-label="Все вакансии" data-item-name="вакансий">Все вакансии</div>
+        <div class="multi-select-dropdown" id="msDdCVac"></div>
+      </div>
+      <div class="multi-select-wrap" id="msWrapCRec">
+        <div class="multi-select-btn" onclick="toggleMs('msWrapCRec')" id="msBtnCRec" data-default-label="Все рекрутеры" data-item-name="рекрутеров">Все рекрутеры</div>
+        <div class="multi-select-dropdown" id="msDdCRec"></div>
+      </div>
+      <div class="multi-select-wrap" id="msWrapCGrp">
+        <div class="multi-select-btn" onclick="toggleMs('msWrapCGrp')" id="msBtnCGrp" data-default-label="Все группы этапов" data-item-name="групп">Все группы этапов</div>
+        <div class="multi-select-dropdown" id="msDdCGrp"></div>
+      </div>
+      <div class="multi-select-wrap" id="msWrapCSrc">
+        <div class="multi-select-btn" onclick="toggleMs('msWrapCSrc')" id="msBtnCSrc" data-default-label="Все источники" data-item-name="источников">Все источники</div>
+        <div class="multi-select-dropdown" id="msDdCSrc"></div>
+      </div>
+    </div>
+    <div class="filter-row">
+      <div class="date-range">
+        Дата этапа: <input type="date" id="cDateFrom" onchange="renderCand()"> — <input type="date" id="cDateTo" onchange="renderCand()">
+        <button onclick="document.getElementById('cDateFrom').value='';document.getElementById('cDateTo').value='';renderCand()" style="padding:4px 8px;border:1px solid #ddd;border-radius:5px;background:#fff;font-size:11px;cursor:pointer;">Сбросить</button>
+      </div>
+    </div>
+    <div class="metrics" id="candMetrics"></div>
+    <div class="section-title" style="margin-top:16px;">Список кандидатов</div>
+    <div class="card" style="padding:0;">
+      <div class="tbl-wrap">
+        <table class="tbl">
+          <thead><tr>
+            <th onclick="sortCand('ФИО')" id="sh-name">ФИО</th>
+            <th onclick="sortCand('Вакансия')" id="sh-vac">Вакансия</th>
+            <th onclick="sortCand('Группа')" id="sh-grp">Группа</th>
+            <th onclick="sortCand('Этап')" id="sh-stage">Этап</th>
+            <th onclick="sortCand('Источник')" id="sh-src">Источник</th>
+            <th onclick="sortCand('ДатаNum')" id="sh-date">Дата этапа</th>
+            <th>Причина отказа</th>
+          </tr></thead>
+          <tbody id="candBody"></tbody>
+        </table>
+      </div>
+      <div class="pagination" id="candPager"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ДИНАМИКА -->
+
+<!-- ЭФФЕКТИВНОСТЬ -->
+<div class="page" id="page-efficiency">
+  <div id="effUpload">
+    <div class="upload-zone" onclick="document.getElementById('fileEff').click()">
+      <div style="font-size:28px;margin-bottom:8px;">📈</div>
+      <div style="font-size:14px;font-weight:500;">Процесс работы над вакансиями</div>
+      <div style="font-size:12px;color:#888;margin-top:4px;">Источники, время на этапах, причины отказов</div>
+      <div class="upload-btn" style="margin-top:12px;">Выбрать файл</div>
+      <input type="file" id="fileEff" accept=".xlsx,.xls" style="display:none">
+    </div>
+    <div id="errEff" style="color:#b54a2a;font-size:12px;text-align:center;margin-top:8px;"></div>
+  </div>
+  <div id="effDash" style="display:none;">
+    <div class="filter-row" style="margin-top:4px;">
+      <div class="multi-select-wrap" id="msWrapERec">
+        <div class="multi-select-btn" onclick="toggleMs('msWrapERec')" id="msBtnERec" data-default-label="Все рекрутеры" data-item-name="рекрутеров">Все рекрутеры</div>
+        <div class="multi-select-dropdown" id="msDdERec"></div>
+      </div>
+      <select id="eVacancy"><option value="">Все вакансии</option></select>
+    </div>
+    <div class="filter-row" id="eDateRow" style="display:none;">
+      <div class="date-range">
+        Период (по датам кандидатов): <input type="date" id="eDateFrom" onchange="renderEff()"> — <input type="date" id="eDateTo" onchange="renderEff()">
+        <button onclick="document.getElementById('eDateFrom').value='';document.getElementById('eDateTo').value='';renderEff()" style="padding:4px 8px;border:1px solid #ddd;border-radius:5px;background:#fff;font-size:11px;cursor:pointer;">Сбросить</button>
+      </div>
+      <div id="eDateHint" style="font-size:11px;color:#888;align-self:center;"></div>
+    </div>
+    <div class="section-title">Источники кандидатов</div>
+    <div class="two-col">
+      <div class="card"><div style="font-size:12px;color:#888;margin-bottom:10px;">Загружено по источникам</div><div class="chart-wrap"><canvas id="srcChart" role="img" aria-label="Источники"></canvas></div></div>
+      <div class="card"><div style="font-size:12px;color:#888;margin-bottom:10px;">Конверсия в интервью с HR</div><div class="chart-wrap"><canvas id="srcConvChart" role="img" aria-label="Конверсия по источникам"></canvas></div></div>
+    </div>
+    <div class="section-title">Среднее время на этапах</div>
+    <div class="card"><div style="font-size:12px;color:#888;margin-bottom:14px;">Факт (дней). Оранжевый — превышает план.</div><div id="timeRows"></div></div>
+    <div class="section-title">Причины отказов</div>
+    <div class="two-col">
+      <div class="card"><div style="font-size:12px;color:#888;margin-bottom:10px;">Кто отказывает</div><div class="chart-wrap"><canvas id="refWhoChart" role="img" aria-label="Кто отказывает"></canvas></div></div>
+      <div class="card"><div style="font-size:12px;color:#888;margin-bottom:10px;">Причины наших отказов</div><div id="refReasonRows" style="font-size:12px;"></div></div>
+    </div>
+  </div>
+</div>
+
+<!-- НАСТРОЙКИ -->
+<div class="page" id="page-settings">
+  <div style="margin-bottom:16px;font-size:13px;color:#666;">
+    Перетащите этапы в нужные группы. Настройки сохраняются в браузере автоматически.
+    <button onclick="resetStageGroups()" style="margin-left:12px;padding:4px 10px;border:1px solid #ddd;border-radius:5px;background:#fff;font-size:12px;cursor:pointer;">Сбросить к дефолту</button>
+  </div>
+  <div id="stageGroupsUI" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;"></div>
+  <div class="section-title" style="margin-top:20px;">Не распределены</div>
+  <div class="card">
+    <div id="stageUnassigned" style="display:flex;flex-wrap:wrap;gap:6px;min-height:40px;" 
+      ondragover="event.preventDefault()" ondrop="dropStage(event,'__unassigned__')"></div>
+  </div>
+</div>
+
+<div class="drop-overlay" id="dropOverlay"><div class="drop-inner">Отпустите файл для загрузки</div></div>
+
+<script>
+const STAGE_GROUPS = [];
+const DYN_STAGES = [];
+const SOURCE_COLS=['Создан вручную','Добавлен из файла','Внешняя рекомендация','Отклик, hh.ru','Поиск, hh.ru','Поиск, LinkedIn','Поиск, Google','Отклик, Telegram','Поиск, Сетка','Поиск, Инстаграм'];
+
+const EXCLUDED_RECRUITERS = ['Перфильева Елена','Гладкая Елена'];
+
+function getLastWeekRange(){
+  const today = new Date();
+  const day = today.getDay(); // 0=вс,1=пн...
+  const isSunday = day === 0;
+  // если воскресенье — текущая неделя (пн–вс), иначе прошлая
+  const diffToMon = isSunday ? -6 : 1 - day;
+  const monday = new Date(today);
+  monday.setDate(today.getDate() + diffToMon);
+  if(!isSunday) monday.setDate(monday.getDate() - 7); // прошлая неделя
+  const sunday = new Date(monday);
+  sunday.setDate(monday.getDate() + 6);
+  const fmt = d => d.toISOString().slice(0,10);
+  return { from: fmt(monday), to: fmt(sunday) };
+}
+
+function setDefaultDates(){
+  const {from, to} = getLastWeekRange();
+  ['fDateFrom','cDateFrom','eDateFrom'].forEach(id=>{
+    const el=document.getElementById(id); if(el&&!el.value) el.value=from;
+  });
+  ['fDateTo','cDateTo','eDateTo'].forEach(id=>{
+    const el=document.getElementById(id); if(el&&!el.value) el.value=to;
+  });
+}
+const SOURCE_PREFIX='Источник: ', REF_PREFIX='Причины отказов: мы отказали ';
+
+let allVacs=[], funnelFiles=[], convChart=null;
+let candData=[], candFiles=[], candSort={col:'ДатаNum',dir:-1}, candPage=1;
+let effData=[], srcChart=null, srcConvChart=null, refWhoChart=null;
+const PAGE_SIZE=50;
+
+// мультиселект состояние
+const msState={};
+
+function fmt(n){return(n==null||n==='')?'—':Number(n).toLocaleString('ru');}
+function pct(a,b){return(!b||!a)?null:Math.round(a/b*100);}
+function excelToDate(v){
+  if(!v) return null;
+  if(typeof v==='number') return new Date(Math.round((v-25569)*86400*1000));
+  if(typeof v==='string'){
+    const p=v.split(' ')[0];
+    const [d,m,y]=p.split('.');
+    if(d&&m&&y) return new Date(+y,+m-1,+d);
+    return new Date(v);
+  }
+  return null;
+}
+function dateStr(d){if(!d) return ''; return d.toLocaleDateString('ru-RU');}
+function weekStart(d){const dt=new Date(d);dt.setHours(0,0,0,0);dt.setDate(dt.getDate()-((dt.getDay()+6)%7));return dt;}
+function weekLabel(d){return d.toLocaleDateString('ru-RU',{day:'2-digit',month:'2-digit'});}
+
+// ── мультиселект ──
+function buildMs(wrapId, btnId, ddId, options, onChange){
+  msState[wrapId]=new Set(options.filter(o=>!EXCLUDED_RECRUITERS.includes(o)));
+  const dd=document.getElementById(ddId);
+  const allChecked=options.every(o=>!EXCLUDED_RECRUITERS.includes(o));
+  dd.innerHTML=`<label class="ms-all"><input type="checkbox" id="ms-all-${wrapId}" ${allChecked?'checked':''} onchange="msToggleAll('${wrapId}','${btnId}','${ddId}')"> Все</label>`
+    +options.map(o=>{
+      const excluded=EXCLUDED_RECRUITERS.includes(o);
+      return `<label><input type="checkbox" value="${o}" ${excluded?'':'checked'} onchange="msChange('${wrapId}','${btnId}','${ddId}')"> ${o}</label>`;
+    }).join('');
+  const vals=options.filter(o=>!EXCLUDED_RECRUITERS.includes(o));
+  updateMsBtn(wrapId,btnId,vals,options.length);
+  dd._onChange=onChange;
+}
+function msToggleAll(wrapId,btnId,ddId){
+  const dd=document.getElementById(ddId);
+  const checked=document.getElementById('ms-all-'+wrapId).checked;
+  dd.querySelectorAll('input[type=checkbox]:not(#ms-all-'+wrapId+')').forEach(cb=>cb.checked=checked);
+  msChange(wrapId,btnId,ddId);
+}
+function msChange(wrapId,btnId,ddId){
+  const dd=document.getElementById(ddId);
+  const vals=[...dd.querySelectorAll('input[type=checkbox]:not(#ms-all-'+wrapId+')')].filter(cb=>cb.checked).map(cb=>cb.value);
+  msState[wrapId]=new Set(vals);
+  const all=dd.querySelectorAll('input[type=checkbox]:not(#ms-all-'+wrapId+')').length===vals.length;
+  document.getElementById('ms-all-'+wrapId).checked=all;
+  updateMsBtn(wrapId,btnId,vals);
+  if(dd._onChange) dd._onChange();
+}
+function updateMsBtn(wrapId,btnId,vals,total){
+  const btn=document.getElementById(btnId);
+  if(!btn) return;
+  const ddId='msDd'+wrapId.replace('msWrap','');
+  const dd=document.getElementById(ddId);
+  const t=total||(dd?dd.querySelectorAll('input[type=checkbox]:not([id^=ms-all])').length:0);
+  const count=Array.isArray(vals)?vals.length:0;
+  // берём дефолтный лейбл из data-атрибута или из начального текста кнопки
+  const defaultLabel=btn.dataset.defaultLabel||btn.firstChild.textContent||'Все';
+  const itemName=btn.dataset.itemName||'элементов';
+  btn.firstChild.textContent=count===t?defaultLabel:(count===0?'Ничего не выбрано':`${count} ${itemName}`);
+}
+function updateMsBtnLabel(btnId,count,total){
+  const btn=document.getElementById(btnId);
+  if(btn) btn.childNodes[0].textContent=count===total?'Все рекрутеры':(count===0?'Никто':count+' рекрутеров');
+}
+function getMsVals(wrapId){return msState[wrapId]?[...msState[wrapId]]:[];}
+function toggleMs(wrapId){
+  document.querySelectorAll('.multi-select-dropdown').forEach(d=>{if(d.id!=='msDd'+wrapId.replace('msWrap','')) d.classList.remove('open');});
+  const ddId='msDd'+wrapId.replace('msWrap','');
+  document.getElementById(ddId).classList.toggle('open');
+}
+document.addEventListener('click',e=>{
+  if(!e.target.closest('.multi-select-wrap')) document.querySelectorAll('.multi-select-dropdown').forEach(d=>d.classList.remove('open'));
+});
+
+function switchTab(t){
+  document.querySelectorAll('.tab').forEach((el,i)=>el.classList.toggle('active',['funnel','candidates','efficiency','settings'][i]===t));
+  document.querySelectorAll('.page').forEach(el=>el.classList.remove('active'));
+  document.getElementById('page-'+t).classList.add('active');
+  if(t==='settings') renderSettingsUI();
+}
+
+// drag-drop
+let isDraggingChip = false;
+document.addEventListener('dragover',e=>{e.preventDefault();if(!isDraggingChip)document.getElementById('dropOverlay').classList.add('show');});
+document.addEventListener('dragleave',e=>{if(e.relatedTarget===null)document.getElementById('dropOverlay').classList.remove('show');});
+document.addEventListener('drop',e=>{
+  e.preventDefault();document.getElementById('dropOverlay').classList.remove('show');
+  const f=e.dataTransfer.files[0];if(!f)return;
+  const ap=document.querySelector('.page.active').id;
+  if(ap==='page-funnel') parseFunnel(f);
+  else if(ap==='page-candidates') parseCand(f);
+  else if(ap==='page-efficiency') parseEff(f);
+});
+document.getElementById('fileFunnel').addEventListener('change',e=>parseFunnel(e.target.files[0]));
+document.getElementById('fileCand').addEventListener('change',e=>parseCand(e.target.files[0]));
+document.getElementById('fileEff').addEventListener('change',e=>parseEff(e.target.files[0]));
+document.getElementById('fStatus').addEventListener('change',renderFunnel);
+document.getElementById('eVacancy').addEventListener('change',renderEff);
+
+// ── FUNNEL ──
+const ALL_STAGES=['Неразобранные','Новые','Связаться','Приглашение на вакансию','Жду ответ — 1','Жду ответ — 2',
+  'Назначить собеседование с рекрутером','Назначено собеседование с рекрутером','Интервью с HR',
+  'Отказ от рекрутера','Отказ от кандидата после рекрутера','Отправлен заказчику','Оценка заказчиком',
+  'Назначить собеседование с заказчиком','Назначено собеседование с заказчиком','Интервью с заказчиком',
+  'Ожидание фидбека от заказчика','Отказ от заказчика после собеседования','Назначено финальное собеседование',
+  'Назначить финальное собеседование','Финальное интервью','Интервью с лидером домена',
+  'Отправлен оффер','Оффер принят','Выход на работу','Тестовое задание','Резерв','Отказ','Испытательный срок'];
+
+function clearFunnelData(){
+  allVacs=[];funnelFiles=[];
+  document.getElementById('funnelDash').style.display='none';
+  document.getElementById('funnelUpload').style.display='block';
+  const rb=document.getElementById('rb-funnel');if(rb)rb.remove();
+  if(convChart){convChart.destroy();convChart=null;}
+}
+function parseFunnel(file){
+  if(!file)return;
+  const r=new FileReader();
+  r.onload=e=>{
+    try{
+      const wb=XLSX.read(e.target.result,{type:'array'});
+      let newVacs=[];
+      const shAll=wb.SheetNames.find(n=>n.includes('Все вакансии')||n.includes('все вакансии'));
+      const shData=wb.SheetNames.find(n=>n.includes('Данные'));
+      if(shAll) newVacs=buildFromRows(XLSX.utils.sheet_to_json(wb.Sheets[shAll],{defval:''}));
+      if(shData&&(!newVacs.length||!newVacs.some(v=>Object.keys(v.stages).length>0)))
+        newVacs=buildFromDataSheet(XLSX.utils.sheet_to_json(wb.Sheets[shData],{defval:''}));
+      if(!newVacs.length){document.getElementById('errFunnel').textContent='Не найдены данные.';return;}
+      const existing=new Set(allVacs.map(v=>v.id||v.name));
+      allVacs=[...allVacs,...newVacs.filter(v=>!existing.has(v.id||v.name))];
+      if(!funnelFiles.includes(file.name)) funnelFiles.push(file.name);
+      document.getElementById('errFunnel').textContent='';
+      document.getElementById('funnelUpload').style.display='none';
+      document.getElementById('funnelDash').style.display='block';
+      document.getElementById('funnelFilesInfo').textContent=`Файлов: ${funnelFiles.length} · Вакансий: ${allVacs.length}`;
+      const recs=[...new Set(allVacs.map(v=>v.recruiter).filter(Boolean))].sort();
+      buildMs('msWrapFRec','msBtnFRec','msDdFRec',recs,renderFunnel);
+      addReloadBtn('funnel',funnelFiles.length>1?`${funnelFiles.length} файлов`:file.name);
+      setDefaultDates();
+      renderFunnel();
+    }catch(err){document.getElementById('errFunnel').textContent='Ошибка: '+err.message;}
+  };
+  r.readAsArrayBuffer(file);
+}
+function buildFromRows(rows){
+  const map={};
+  rows.forEach(row=>{
+    const id=row['ID вакансии в Talantix']||'',name=row['Название вакансии в Talantix']||row['Название']||'';
+    const resp=row['Ответственный']||'',status=row['Статус']||'',stage=row['Этап']||'';
+    const count=parseInt(row['Количество кандидатов, которые прошли через этап']||0)||0;
+    const key=id||name;if(!key)return;
+    if(!map[key]) map[key]={id,name,recruiter:resp,status,stages:{}};
+    if(stage) map[key].stages[stage]=(map[key].stages[stage]||0)+count;
+  });
+  return Object.values(map).filter(v=>v.name);
+}
+function buildFromDataSheet(rows){
+  const map={};
+  rows.forEach(row=>{
+    const id=row['ID вакансии в Talantix']||'',name=row['Название вакансии в Talantix']||'';
+    const resp=row['Ответственный']||'',status=row['Статус']||'';
+    const key=id||name;if(!key)return;
+    if(!map[key]) map[key]={id,name,recruiter:resp,status,stages:{}};
+    ALL_STAGES.forEach(s=>{if(row[s]!==undefined&&row[s]!=='') map[key].stages[s]=parseInt(row[s])||0;});
+  });
+  return Object.values(map).filter(v=>v.name);
+}
+function gc(stageMap){
+  const res={};
+  STAGE_GROUPS.forEach(g=>res[g.key]=g.stages.reduce((s,st)=>s+(stageMap[st]||0),0));
+  // суммарный для совместимости
+  res.cust_sched=(res.cust1||0)+(res.cust2||0);
+  return res;
+}
+let convMode = 'step'; // 'step' = этап к этапу, 'base' = от загруженных
+
+function resetFunnelDates(){
+  document.getElementById('fDateFrom').value='';
+  document.getElementById('fDateTo').value='';
+  renderFunnel();
+}
+
+// порядок групп по воронке (для варианта А)
+const GROUP_ORDER = ['loaded','rec_sched','cust1','cust2','offer']; // НЕ включает rejected
+
+// для вакансии возвращает уникальных кандидатов на каждой группе по варианту А:
+// кандидат на группе N засчитывается во все группы 1..N
+function gcConv(vac){
+  if(!candData.length) return null;
+  // для каждого уникального кандидата (ФИО+вакансия) ищем его максимальный индекс группы
+  const candMaxGroup={};
+  candData.forEach(c=>{
+    const vacIdStr=String(vac.id||'').trim();
+    const vacNameStr=(vac.name||'').trim().toLowerCase();
+    const cIdStr=String(c.ВакансияID||'').trim();
+    const cNameStr=(c.Вакансия||'').trim().toLowerCase();
+    const matchId=vacIdStr&&cIdStr&&vacIdStr===cIdStr;
+    const matchName=!matchId&&vacNameStr&&cNameStr===vacNameStr;
+    if(!matchId&&!matchName) return;
+    const uid=c.ФИО+'|'+(c.ВакансияID||c.Вакансия);
+    // любой кандидат из файла = загружен (индекс 0 минимум)
+    if(candMaxGroup[uid]===undefined) candMaxGroup[uid]=-1;
+    const grpIdx=GROUP_ORDER.findIndex(key=>STAGE_GROUPS.find(g=>g.key===key)?.stages.includes(c.Этап));
+    if(grpIdx>candMaxGroup[uid]) candMaxGroup[uid]=grpIdx;
+  });
+  // считаем: loaded = все уникальные кандидаты вакансии
+  // остальные группы — те кто достиг этого уровня (вариант А)
+  const totalUniq=Object.keys(candMaxGroup).length;
+  const counts=GROUP_ORDER.map((_,i)=>Object.values(candMaxGroup).filter(max=>max>=i).length);
+  // гарантируем убывание — каждый следующий не может быть больше предыдущего
+  for(let i=1;i<counts.length;i++) if(counts[i]>counts[i-1]) counts[i]=counts[i-1];
+  const res={};
+  GROUP_ORDER.forEach((key,i)=>res[key]=counts[i]);
+  // для loaded берём всех уникальных (включая тех у кого maxGroup=-1, то есть этап не в группах)
+  res.loaded=totalUniq;
+  res.cust_sched=(res.cust1||0)+(res.cust2||0);
+  return res;
+}
+
+function renderFunnel(){
+  const selRecs=getMsVals('msWrapFRec');
+  const allRecs=[...new Set(allVacs.map(v=>v.recruiter).filter(Boolean))];
+  const useAllRecs=selRecs.length===0||selRecs.length===allRecs.length;
+  const st=document.getElementById('fStatus').value;
+  const df=document.getElementById('fDateFrom').value;
+  const dt=document.getElementById('fDateTo').value;
+  const useDates=candData.length>0&&(df||dt);
+
+  document.getElementById('fDateRow').style.display=candData.length?'flex':'none';
+  const hint=document.getElementById('fDateHint');
+  hint.textContent=useDates?'Цифры — за период. Конверсии — по всей базе кандидатов (правый столбец)':'Загрузите «Кандидаты» для фильтра по датам и конверсий';
+
+  const vacs=allVacs.filter(v=>
+    (useAllRecs||selRecs.includes(v.recruiter))&&(!st||v.status===st));
+
+  // для отображения цифр — с фильтром по датам
+  function getStages(vac){
+    if(!useDates) return vac.stages||{};
+    const stages={};
+    const vacIdStr=String(vac.id||'').trim();
+    const vacNameStr=(vac.name||'').trim().toLowerCase();
+    candData.forEach(c=>{
+      const cIdStr=String(c.ВакансияID||'').trim();
+      const cNameStr=(c.Вакансия||'').trim().toLowerCase();
+      const matchId=vacIdStr&&cIdStr&&vacIdStr===cIdStr;
+      const matchName=!matchId&&vacNameStr&&cNameStr===vacNameStr;
+      if(!matchId&&!matchName) return;
+      if(df&&c.ДатаNum&&c.ДатаNum<new Date(df).getTime()) return;
+      if(dt&&c.ДатаNum&&c.ДатаNum>new Date(dt).getTime()+86399999) return;
+      if(c.Этап) stages[c.Этап]=(stages[c.Этап]||0)+1;
+    });
+    return stages;
+  }
+
+  // для конверсий — вариант А по всей выборке (без дат)
+  function getConv(vac){
+    if(candData.length) return gcConv(vac);
+    return gc(vac.stages||{});
+  }
+
+  let tL=0,tR=0,tC1=0,tC2=0,tO=0,tRej=0;
+  vacs.forEach(v=>{const g=gc(getStages(v));tL+=g.loaded;tR+=g.rec_sched;tC1+=(g.cust1||0);tC2+=(g.cust2||0);tO+=g.offer;tRej+=(g.rejected||0);});
+  let cvL=0,cvR=0,cvC1=0,cvC2=0,cvO=0;
+  vacs.forEach(v=>{const g=getConv(v);if(g){cvL+=g.loaded||0;cvR+=g.rec_sched||0;cvC1+=g.cust1||0;cvC2+=g.cust2||0;cvO+=g.offer||0;}});
+
+  const periodNote=useDates?(df&&dt?` · ${df.split('-').reverse().join('.')} — ${dt.split('-').reverse().join('.')}`:(df?` · с ${df.split('-').reverse().join('.')}`:`· по ${dt.split('-').reverse().join('.')}`)):'';
+  document.getElementById('metricsRow').innerHTML=`
+    <div class="metric-card"><div class="label">Загружено${periodNote}</div><div class="value">${fmt(tL)}</div><div class="sub">${vacs.length} вакансий</div></div>
+    <div class="metric-card"><div class="label">Собес с рекрутером</div><div class="value">${fmt(tR)}</div><div class="sub">${pct(cvR,cvL)!=null?pct(cvR,cvL)+'% конв.':''}</div></div>
+    <div class="metric-card"><div class="label">Нанимающий — 1</div><div class="value">${fmt(tC1)}</div><div class="sub">${pct(cvC1,cvR)!=null?pct(cvC1,cvR)+'% конв.':''}</div></div>
+    <div class="metric-card"><div class="label">Нанимающий — 2</div><div class="value">${fmt(tC2)}</div><div class="sub">${pct(cvC2,cvC1)!=null?pct(cvC2,cvC1)+'% конв.':''}</div></div>
+    <div class="metric-card"><div class="label">Оффер / выход</div><div class="value">${fmt(tO)}</div><div class="sub">${pct(cvO,cvC2)!=null?pct(cvO,cvC2)+'% конв.':''}</div></div>
+    <div class="metric-card" style="border-left:3px solid #b54a2a"><div class="label" style="color:#b54a2a">Отказы (за период)</div><div class="value" style="color:#b54a2a">${fmt(tRej)}</div></div>`;
+  document.getElementById('fHead').innerHTML=`<tr>
+    <th>Вакансия</th><th>Рекрутер</th><th>Статус</th>
+    <th style="text-align:right">Загружено</th><th style="text-align:right">Собес рекрутер</th>
+    <th style="text-align:right">Нанимающий — 1</th><th style="text-align:right">Нанимающий — 2</th><th style="text-align:right">Оффер/выход</th>
+    <th style="text-align:right;color:#b54a2a">Отказы</th>
+    <th style="min-width:120px">
+      Конверсия<div style="font-size:10px;color:#aaa;font-weight:400">по всей базе</div>
+      <div style="margin-top:4px;display:flex;gap:4px;">
+        <span onclick="convMode='step';renderFunnel()" id="cmStep" style="font-size:10px;padding:2px 6px;border-radius:4px;cursor:pointer;background:#1a1a1a;color:#fff">этап→этап</span>
+        <span onclick="convMode='base';renderFunnel()" id="cmBase" style="font-size:10px;padding:2px 6px;border-radius:4px;cursor:pointer;background:#f0efeb;color:#666">от базы</span>
+      </div>
+    </th></tr>`;
+
+  function getCandNames(vac, stageKeys){
+    if(!candData.length) return [];
+    const dfMs=df?new Date(df).getTime():null;
+    const dtMs=dt?new Date(dt).getTime()+86399999:null;
+    const allStages=new Set(stageKeys.flatMap(k=>STAGE_GROUPS.find(g=>g.key===k)?.stages||[]));
+    return candData.filter(c=>{
+      const vacIdStr=String(vac.id||'').trim();
+      const cIdStr=String(c.ВакансияID||'').trim();
+      const matchId=vacIdStr&&cIdStr&&vacIdStr===cIdStr;
+      const matchName=!matchId&&(vac.name||'').trim().toLowerCase()===(c.Вакансия||'').trim().toLowerCase();
+      if(!matchId&&!matchName) return false;
+      if(!allStages.has(c.Этап)) return false;
+      if(dfMs&&c.ДатаNum&&c.ДатаNum<dfMs) return false;
+      if(dtMs&&c.ДатаNum&&c.ДатаNum>dtMs) return false;
+      return true;
+    }).map(c=>c.ФИО).filter(Boolean);
+  }
+
+  function ttCell(val, names){
+    if(!names||!names.length) return `<td style="text-align:right">${fmt(val)}</td>`;
+    const list=names.map(n=>`<div style="white-space:nowrap">${n}</div>`).join('');
+    return `<td style="text-align:right">
+      <div class="tt-wrap" style="display:inline-block">
+        <span class="tt-num">${fmt(val)}</span>
+        <div class="tt">${list}</div>
+      </div>
+    </td>`;
+  }
+
+  document.getElementById('fBody').innerHTML=vacs.length?vacs.map((v,i)=>{
+    const stages=getStages(v);
+    const g=gc(stages);
+    const cv=getConv(v)||g;
+    // конверсия в строке — по варианту А
+    // обновляем стиль кнопок
+    const cmStep=document.getElementById('cmStep');
+    const cmBase=document.getElementById('cmBase');
+    if(cmStep&&cmBase){
+      cmStep.style.background=convMode==='step'?'#1a1a1a':'#f0efeb';
+      cmStep.style.color=convMode==='step'?'#fff':'#666';
+      cmBase.style.background=convMode==='base'?'#1a1a1a':'#f0efeb';
+      cmBase.style.color=convMode==='base'?'#fff':'#666';
+    }
+    const convR=pct(cv.rec_sched,cv.loaded);
+    const convC1=pct(cv.cust1||0,cv.rec_sched);
+    const convC2=pct(cv.cust2||0,cv.cust1||0);
+    const convO=pct(cv.offer||0,cv.cust2||0);
+    const convRb=pct(cv.rec_sched,cv.loaded);
+    const convC1b=pct(cv.cust1||0,cv.loaded);
+    const convC2b=pct(cv.cust2||0,cv.loaded);
+    const convOb=pct(cv.offer||0,cv.loaded);
+    let convStr;
+    if(convMode==='base'){
+      convStr=[
+        convRb!=null?`р:${convRb}%`:null,
+        convC1b!=null?`н1:${convC1b}%`:null,
+        convC2b!=null?`н2:${convC2b}%`:null,
+        convOb!=null?`оф:${convOb}%`:null,
+      ].filter(Boolean).join(' · ');
+    } else {
+      convStr=[
+        convR!=null?convR+'%':null,
+        convC1!=null?convC1+'%':null,
+        convC2!=null?convC2+'%':null,
+        convO!=null?convO+'%':null,
+      ].filter(Boolean).join('→');
+    }
+    const totalBase=cv.loaded||0;
+    const bar=Math.min(Math.round((cv.rec_sched||0)/(cv.loaded||1)*100),100);
+    const badge=v.status==='Активная'?'<span class="badge badge-active">активная</span>':'<span class="badge badge-archive">архив</span>';
+    const nL=getCandNames(v,['loaded']);
+    const nR=getCandNames(v,['rec_sched']);
+    const nC1=getCandNames(v,['cust1']);
+    const nC2=getCandNames(v,['cust2']);
+    const nO=getCandNames(v,['offer']);
+    const nRej=getCandNames(v,['rejected']);
+    const rejCount=g.rejected||0;
+    return `<tr class="vacancy-row" onclick="toggleVacDetail(${i})">
+      <td style="font-weight:500;max-width:200px">${v.name}</td>
+      <td><span class="tag">${v.recruiter||'—'}</span></td><td>${badge}</td>
+      ${ttCell(g.loaded,nL)}${ttCell(g.rec_sched,nR)}
+      ${ttCell(g.cust1||0,nC1)}${ttCell(g.cust2||0,nC2)}${ttCell(g.offer,nO)}
+      <td style="text-align:right;color:${rejCount>0?'#b54a2a':'#ccc'}">${rejCount>0?ttCell(rejCount,nRej).replace('<td style="text-align:right">','').replace('</td>',''):fmt(0)}</td>
+      <td><div class="bar-bg"><div class="bar-fill" style="width:${bar}%"></div></div>
+        <div style="font-size:11px;color:#888;margin-top:2px">${convStr||'—'}</div>
+        ${totalBase?`<div style="font-size:10px;color:#bbb;margin-top:1px">база: ${totalBase} чел.</div>`:''}
+      </td>
+    </tr>
+    <tr class="detail-row" id="vd-${i}"><td colspan="10">
+      <div class="detail-inner">${STAGE_GROUPS.map(sg=>`<div class="detail-cell"><div class="dl">${sg.label}</div><div class="dv">${fmt(g[sg.key])}</div></div>`).join('')}</div>
+    </td></tr>`;
+  }).join(''):'<tr><td colspan="10" class="empty">Нет данных</td></tr>';
+  const totals={};STAGE_GROUPS.forEach(g=>totals[g.key]=0);
+  vacs.forEach(v=>{const g=gc(getStages(v));STAGE_GROUPS.forEach(sg=>totals[sg.key]+=g[sg.key]||0);});
+  const data=STAGE_GROUPS.map(g=>totals[g.key]);
+  document.getElementById('chartLegend').innerHTML=STAGE_GROUPS.map((g,i)=>`<span><span class="dot" style="background:${g.color}"></span>${g.label}: ${fmt(data[i])}</span>`).join('');
+  if(convChart)convChart.destroy();
+  convChart=new Chart(document.getElementById('convChart').getContext('2d'),{
+    type:'bar',data:{labels:STAGE_GROUPS.map(g=>g.label),datasets:[{label:'Кандидатов',data,backgroundColor:STAGE_GROUPS.map(g=>g.color),borderRadius:4}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},
+      scales:{y:{beginAtZero:true,ticks:{color:'#888',font:{size:10}},grid:{color:'#f0eeea'}},
+              x:{ticks:{color:'#666',font:{size:10},maxRotation:20},grid:{display:false}}}}});
+}
+function toggleVacDetail(i){const r=document.getElementById('vd-'+i);r.style.display=r.style.display==='table-row'?'none':'table-row';}
+
+// ── CANDIDATES ──
+function clearCandData(){
+  candData=[];candFiles=[];
+  document.getElementById('candDash').style.display='none';
+  document.getElementById('candUpload').style.display='block';
+  const rb=document.getElementById('rb-cand');if(rb)rb.remove();
+}
+function parseCand(file){
+  if(!file)return;
+  const r=new FileReader();
+  r.onload=e=>{
+    try{
+      const wb=XLSX.read(e.target.result,{type:'array'});
+      const rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:''});
+      if(!rows.length){document.getElementById('errCand').textContent='Файл пустой.';return;}
+      const newRows=rows.map(row=>{
+        const d=excelToDate(row['Дата перевода кандидата на этап']);
+        const этап=row['Этап']||'';
+        const группа=STAGE_GROUPS.find(g=>g.stages.includes(этап))?.label||'Другое';
+        return{ФИО:row['ФИО']||'',
+          Вакансия:row['Название вакансии в Talantix']||'',
+          ВакансияID:String(row['ID вакансии в Talantix']||''),
+          Этап:этап, Группа:группа, Источник:row['Источник кандидата']||'',
+          Дата:d?dateStr(d):'',ДатаNum:d?d.getTime():0,ДатаObj:d,
+          Причина:row['Причины отказов']||''};
+      });
+      const existing=new Set(candData.map(c=>c.ФИО+'|'+c.Вакансия+'|'+c.Этап+'|'+c.ДатаNum));
+      candData=[...candData,...newRows.filter(c=>!existing.has(c.ФИО+'|'+c.Вакансия+'|'+c.Этап+'|'+c.ДатаNum))];
+      if(!candFiles.includes(file.name)) candFiles.push(file.name);
+      document.getElementById('errCand').textContent='';
+      document.getElementById('candUpload').style.display='none';
+      document.getElementById('candDash').style.display='block';
+      document.getElementById('candFilesInfo').textContent=`Файлов: ${candFiles.length} · Записей: ${candData.length}`;
+      const vacs=[...new Set(candData.map(c=>c.Вакансия).filter(Boolean))].sort();
+      const sources=[...new Set(candData.map(c=>c.Источник).filter(Boolean))].sort();
+      const recList=[...new Set(allVacs.map(v=>v.recruiter).filter(Boolean))].sort();
+      const grpList=STAGE_GROUPS.map(g=>g.label);
+      buildMs('msWrapCVac','msBtnCVac','msDdCVac',vacs,renderCand);
+      buildMs('msWrapCRec','msBtnCRec','msDdCRec',recList,renderCand);
+      buildMs('msWrapCGrp','msBtnCGrp','msDdCGrp',grpList,renderCand);
+      buildMs('msWrapCSrc','msBtnCSrc','msDdCSrc',sources,renderCand);
+      addReloadBtn('cand',file.name);
+      setDefaultDates();
+      renderCand();
+      if(allVacs.length) renderFunnel();
+      if(effData.length) renderEff();
+    }catch(err){document.getElementById('errCand').textContent='Ошибка: '+err.message;}
+  };
+  r.readAsArrayBuffer(file);
+}
+function fillSelect(id,opts){
+  const sel=document.getElementById(id);const first=sel.options[0].text;
+  sel.innerHTML=`<option value="">${first}</option>`;
+  opts.forEach(o=>{const el=document.createElement('option');el.value=o;el.textContent=o;sel.appendChild(el);});
+}
+function sortCand(col){
+  if(candSort.col===col)candSort.dir*=-1;else{candSort.col=col;candSort.dir=-1;}
+  candPage=1;renderCand();
+}
+function getFilteredCand(){
+  const q=document.getElementById('cSearch').value.toLowerCase();
+  const selVacs=getMsVals('msWrapCVac');
+  const selGrps=getMsVals('msWrapCGrp');
+  const selSrcs=getMsVals('msWrapCSrc');
+  const df=document.getElementById('cDateFrom').value;
+  const dt=document.getElementById('cDateTo').value;
+  const selRecs=getMsVals('msWrapCRec');
+  const vacRecMap={};allVacs.forEach(v=>vacRecMap[v.name]=v.recruiter);
+  const totalVacs=[...new Set(candData.map(c=>c.Вакансия).filter(Boolean))].length;
+  const totalSrcs=[...new Set(candData.map(c=>c.Источник).filter(Boolean))].length;
+  const useAllVacs=selVacs.length===0||selVacs.length===totalVacs;
+  const useAllGrps=selGrps.length===0||selGrps.length===STAGE_GROUPS.length;
+  const useAllSrcs=selSrcs.length===0||selSrcs.length===totalSrcs;
+  return candData.filter(c=>{
+    if(q&&!c.ФИО.toLowerCase().includes(q)) return false;
+    if(!useAllVacs&&!selVacs.includes(c.Вакансия)) return false;
+    if(!useAllGrps&&!selGrps.includes(c.Группа)) return false;
+    if(!useAllSrcs&&!selSrcs.includes(c.Источник)) return false;
+    if(selRecs.length>0){const rec=vacRecMap[c.Вакансия];if(rec&&!selRecs.includes(rec)) return false;}
+    if(df&&c.ДатаNum&&c.ДатаNum<new Date(df).getTime()) return false;
+    if(dt&&c.ДатаNum&&c.ДатаNum>new Date(dt).getTime()+86399999) return false;
+    return true;
+  });
+}
+function renderCand(){
+  let filtered=getFilteredCand();
+  filtered.sort((a,b)=>{
+    const col=candSort.col;let av=a[col]||'',bv=b[col]||'';
+    if(col==='ДатаNum'){av=a.ДатаNum||0;bv=b.ДатаNum||0;}
+    return av<bv?-candSort.dir:av>bv?candSort.dir:0;
+  });
+  const totalPages=Math.max(1,Math.ceil(filtered.length/PAGE_SIZE));
+  if(candPage>totalPages)candPage=totalPages;
+  const slice=filtered.slice((candPage-1)*PAGE_SIZE,candPage*PAGE_SIZE);
+  const stageCount={};filtered.forEach(c=>stageCount[c.Этап]=(stageCount[c.Этап]||0)+1);
+  const recCount=STAGE_GROUPS.find(g=>g.key==='rec_sched').stages.reduce((s,st)=>s+(stageCount[st]||0),0);
+  const cust1Stages=STAGE_GROUPS.find(g=>g.key==='cust1')?.stages||[];
+  const cust2Stages=STAGE_GROUPS.find(g=>g.key==='cust2')?.stages||[];
+  const custCount=[...cust1Stages,...cust2Stages].reduce((s,st)=>s+(stageCount[st]||0),0);
+  document.getElementById('candMetrics').innerHTML=`
+    <div class="metric-card"><div class="label">Записей (по фильтру)</div><div class="value">${fmt(filtered.length)}</div></div>
+    <div class="metric-card"><div class="label">Собес с рекрутером</div><div class="value">${fmt(recCount)}</div><div class="sub">${pct(recCount,filtered.length)!=null?pct(recCount,filtered.length)+'%':''}</div></div>
+    <div class="metric-card"><div class="label">Собес с нанимающим</div><div class="value">${fmt(custCount)}</div><div class="sub">${pct(custCount,recCount)!=null?pct(custCount,recCount)+'%':''}</div></div>`;
+  ['name','vac','grp','stage','src','date'].forEach(k=>{
+    const el=document.getElementById('sh-'+k);if(!el)return;
+    const col={name:'ФИО',vac:'Вакансия',grp:'Группа',stage:'Этап',src:'Источник',date:'ДатаNum'}[k];
+    el.className=candSort.col===col?(candSort.dir===1?'sort-asc':'sort-desc'):'';
+  });
+  // цвет группы
+  const grpColor={};STAGE_GROUPS.forEach(g=>grpColor[g.label]=g.color);
+  document.getElementById('candBody').innerHTML=slice.length?slice.map(c=>{
+    const col=grpColor[c.Группа]||'#aaa';
+    return `<tr>
+    <td style="font-weight:500">${c.ФИО||'—'}</td>
+    <td style="max-width:160px">${c.Вакансия||'—'}</td>
+    <td><span style="display:inline-block;padding:2px 8px;border-radius:20px;font-size:11px;background:${col}22;color:${col};border:1px solid ${col}44">${c.Группа||'—'}</span></td>
+    <td><span class="badge stage-badge">${c.Этап||'—'}</span></td>
+    <td>${c.Источник||'—'}</td>
+    <td>${c.Дата||''}</td>
+    <td style="color:#888;max-width:200px">${c.Причина||''}</td>
+  </tr>`;
+  }).join(''):'<tr><td colspan="7" class="empty">Нет кандидатов</td></tr>';
+  document.getElementById('candPager').innerHTML=`
+    <button onclick="candPage=Math.max(1,candPage-1);renderCand()" ${candPage===1?'disabled':''}>← Назад</button>
+    <span>${candPage} / ${totalPages} (${filtered.length} всего)</span>
+    <button onclick="candPage=Math.min(${totalPages},candPage+1);renderCand()" ${candPage===totalPages?'disabled':''}>Вперёд →</button>`;
+}
+
+// ── EFFICIENCY ──
+function parseEff(file){
+  if(!file)return;
+  const r=new FileReader();
+  r.onload=e=>{
+    try{
+      const wb=XLSX.read(e.target.result,{type:'array'});
+      effData=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:''});
+      if(!effData.length){document.getElementById('errEff').textContent='Файл пустой.';return;}
+      document.getElementById('errEff').textContent='';
+      document.getElementById('effUpload').style.display='none';
+      document.getElementById('effDash').style.display='block';
+      const recs=[...new Set(effData.map(r=>r['Ответственный']||'').filter(Boolean))].sort();
+      const vacs=[...new Set(effData.map(r=>r['Название вакансии в Talantix']||'').filter(Boolean))].sort();
+      buildMs('msWrapERec','msBtnERec','msDdERec',recs,renderEff);
+      fillSelect('eVacancy',vacs);
+      addReloadBtn('eff',file.name);
+      setDefaultDates();
+      renderEff();
+    }catch(err){document.getElementById('errEff').textContent='Ошибка: '+err.message;}
+  };
+  r.readAsArrayBuffer(file);
+}
+function renderEff(){
+  const selRecs=getMsVals('msWrapERec');
+  const allEffRecs=[...new Set(effData.map(r=>r['Ответственный']).filter(Boolean))];
+  const useAllRecs=selRecs.length===0||selRecs.length===allEffRecs.length;
+  const vac=document.getElementById('eVacancy').value;
+  const df=document.getElementById('eDateFrom').value;
+  const dt=document.getElementById('eDateTo').value;
+  const useDates=candData.length>0&&(df||dt);
+
+  document.getElementById('eDateRow').style.display=candData.length?'flex':'none';
+  document.getElementById('eDateHint').textContent=useDates?'Источники и отказы из файла кандидатов за период':'Загрузите «Кандидаты» для фильтра по датам';
+
+  // фильтруем effData для времени на этапах (там нет дат — берём всегда из effData)
+  const rows=effData.filter(r=>
+    (useAllRecs||selRecs.includes(r['Ответственный']))&&(!vac||r['Название вакансии в Talantix']===vac));
+
+  // для источников и отказов: если даты — берём из candData, иначе из effData
+  const srcTotals={}, srcRecInt={};
+  SOURCE_COLS.forEach(s=>{srcTotals[s]=0; srcRecInt[s]=0;});
+  const recStages=new Set(STAGE_GROUPS.find(g=>g.key==='rec_sched')?.stages||[]);
+  const vacRecMap={};allVacs.forEach(v=>vacRecMap[v.name]=v.recruiter);
+
+  if(useDates){
+    // источники из кандидатов за период
+    const filtered=candData.filter(c=>{
+      if(df&&c.ДатаNum<new Date(df).getTime()) return false;
+      if(dt&&c.ДатаNum>new Date(dt).getTime()+86399999) return false;
+      if(vac&&c.Вакансия!==vac) return false;
+      if(!useAllRecs){const rec=vacRecMap[c.Вакансия];if(rec&&!selRecs.includes(rec)) return false;}
+      return true;
+    });
+    filtered.forEach(c=>{
+      // нормализуем источник
+      const src=SOURCE_COLS.find(s=>c.Источник&&c.Источник.includes(s.replace('Поиск, ','').replace('Отклик, ','').replace('Создан ','').replace('Добавлен ','').replace('Внешняя ','')))||c.Источник;
+      const matchedCol=SOURCE_COLS.find(s=>c.Источник===s||c.Источник===('Поиск, '+s)||c.Источник===('Отклик, '+s));
+      // точное совпадение
+      if(SOURCE_COLS.includes(c.Источник)){
+        srcTotals[c.Источник]=(srcTotals[c.Источник]||0)+1;
+        if(recStages.has(c.Этап)) srcRecInt[c.Источник]=(srcRecInt[c.Источник]||0)+1;
+      }
+    });
+  } else {
+    rows.forEach(row=>{
+      SOURCE_COLS.forEach(s=>{
+        srcTotals[s]+=parseInt(row[SOURCE_PREFIX+s]||0)||0;
+        const stage=row['Этап']||'';
+        if(recStages.has(stage)) srcRecInt[s]+=parseInt(row[SOURCE_PREFIX+s]||0)||0;
+      });
+    });
+  }
+
+  const srcKeys=SOURCE_COLS.filter(s=>srcTotals[s]>0);
+  const srcColors=['#4a7dbd','#5ba08a','#d47a2a','#7a5ba0','#a05b5b','#5b8ca0','#a0905b','#5ba07a','#a05b8c','#7aa05b'];
+  if(srcChart)srcChart.destroy();
+  srcChart=new Chart(document.getElementById('srcChart').getContext('2d'),{
+    type:'bar',data:{labels:srcKeys,datasets:[{label:'Кандидатов',data:srcKeys.map(s=>srcTotals[s]),backgroundColor:srcColors.slice(0,srcKeys.length),borderRadius:3}]},
+    options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},
+      scales:{x:{beginAtZero:true,ticks:{color:'#888',font:{size:10}},grid:{color:'#f0eeea'}},y:{ticks:{color:'#666',font:{size:10}},grid:{display:false}}}}});
+  if(srcConvChart)srcConvChart.destroy();
+  srcConvChart=new Chart(document.getElementById('srcConvChart').getContext('2d'),{
+    type:'bar',data:{labels:srcKeys,datasets:[{label:'%',data:srcKeys.map(s=>srcTotals[s]>0?Math.round(srcRecInt[s]/srcTotals[s]*100):0),backgroundColor:srcColors.slice(0,srcKeys.length),borderRadius:3}]},
+    options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},
+      scales:{x:{beginAtZero:true,max:100,ticks:{color:'#888',font:{size:10},callback:v=>v+'%'},grid:{color:'#f0eeea'}},y:{ticks:{color:'#666',font:{size:10}},grid:{display:false}}}}});
+
+  // время на этапах — всегда из effData (там агрегированное)
+  const stageTime={},stagePlan={},stageCnt={};
+  rows.forEach(row=>{
+    const stage=row['Этап']||'';
+    const fact=parseFloat(row['Среднее время соискателя на этапе, факт (дней)'])||0;
+    const plan=parseFloat(row['Среднее время соискателя на этапе, план (дней)'])||0;
+    if(fact>0){if(!stageTime[stage]){stageTime[stage]=0;stagePlan[stage]=0;stageCnt[stage]=0;}
+      stageTime[stage]+=fact;stagePlan[stage]+=plan;stageCnt[stage]++;}
+  });
+  const timeStages=Object.keys(stageTime).filter(s=>stageTime[s]>0);
+  const maxTime=Math.max(...timeStages.map(s=>stageTime[s]/stageCnt[s]),1);
+  document.getElementById('timeRows').innerHTML=timeStages.map(s=>{
+    const avg=Math.round(stageTime[s]/stageCnt[s]);
+    const avgPlan=stagePlan[s]>0?Math.round(stagePlan[s]/stageCnt[s]):null;
+    const over=avgPlan&&avg>avgPlan;
+    const bw=Math.round(avg/maxTime*100);
+    const pw=avgPlan?Math.round(avgPlan/maxTime*100):null;
+    return `<div class="time-row">
+      <div class="time-label" title="${s}">${s}</div>
+      <div class="time-bars">
+        <div class="bar-bg" style="height:6px"><div class="bar-fill ${over?'warn':'ok'}" style="width:${bw}%;height:6px"></div></div>
+        ${pw?`<div class="bar-bg" style="height:3px;margin-top:2px;opacity:0.4"><div class="bar-fill" style="width:${pw}%;height:3px;background:#888"></div></div>`:''}
+      </div>
+      <div class="time-val ${over?'over':''}">${avg}д${avgPlan?` / ${avgPlan}д`:''}</div>
+    </div>`;
+  }).join('')||'<div class="empty">Нет данных</div>';
+
+  // отказы — если даты то из candData, иначе из effData
+  let myRef=0,theirRef=0,noReason=0;
+  const reasonTotals={};
+  if(useDates){
+    const filtered=candData.filter(c=>{
+      if(df&&c.ДатаNum<new Date(df).getTime()) return false;
+      if(dt&&c.ДатаNum>new Date(dt).getTime()+86399999) return false;
+      if(vac&&c.Вакансия!==vac) return false;
+      if(!useAllRecs){const rec=vacRecMap[c.Вакансия];if(rec&&!selRecs.includes(rec)) return false;}
+      return true;
+    });
+    filtered.forEach(c=>{
+      if(!c.Причина) return;
+      const reasons=c.Причина.split(';').map(r=>r.trim()).filter(Boolean);
+      if(reasons.length===0){noReason++;return;}
+      reasons.forEach(r=>{
+        if(r.includes('отказали')) theirRef++;
+        else { myRef++; reasonTotals[r]=(reasonTotals[r]||0)+1; }
+      });
+    });
+  } else {
+    rows.forEach(r=>{myRef+=parseInt(r['Мы отказали']||0)||0;theirRef+=parseInt(r['Нам отказали']||0)||0;noReason+=parseInt(r['Причина отказа не указана']||0)||0;});
+    const reasonCols=Object.keys(rows[0]||{}).filter(k=>k.startsWith(REF_PREFIX));
+    rows.forEach(row=>reasonCols.forEach(k=>{const v=parseInt(row[k]||0)||0;if(v)reasonTotals[k.replace(REF_PREFIX,'')]=(reasonTotals[k.replace(REF_PREFIX,'')]||0)+v;}));
+  }
+  if(refWhoChart)refWhoChart.destroy();
+  const whoD=[myRef,theirRef,noReason].filter(v=>v>0);
+  const whoL=['Мы отказали','Нам отказали','Не указана'].filter((_,i)=>[myRef,theirRef,noReason][i]>0);
+  refWhoChart=new Chart(document.getElementById('refWhoChart').getContext('2d'),{
+    type:'doughnut',data:{labels:whoL,datasets:[{data:whoD,backgroundColor:['#4a7dbd','#d47a2a','#aaa'],borderWidth:0}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{font:{size:11},color:'#666'}}}}});
+  const sorted=Object.entries(reasonTotals).sort((a,b)=>b[1]-a[1]).filter(([,v])=>v>0);
+  const maxR=sorted[0]?.[1]||1;
+  document.getElementById('refReasonRows').innerHTML=sorted.length?sorted.map(([k,v])=>`<div style="margin-bottom:8px">
+    <div style="display:flex;justify-content:space-between;margin-bottom:3px;font-size:11px;color:#444"><span>${k}</span><span>${v}</span></div>
+    <div class="bar-bg"><div class="bar-fill" style="width:${Math.round(v/maxR*100)}%;background:#4a7dbd"></div></div>
+  </div>`).join(''):'<div class="empty">Нет данных</div>';
+}
+
+// ── shared ──
+function addReloadBtn(type,name){
+  const id='rb-'+type;let el=document.getElementById(id);
+  if(!el){el=document.createElement('label');el.id=id;el.className='upload-btn secondary';el.style='font-size:12px;padding:6px 14px;cursor:pointer;';}
+  const inputId='ri-'+type;
+  el.innerHTML=`↺ ${name.length>24?name.slice(0,22)+'…':name}<input id="${inputId}" type="file" accept=".xlsx,.xls" style="display:none">`;
+  document.getElementById('reloadBtns').appendChild(el);
+  document.getElementById(inputId).addEventListener('change',e=>{
+    if(type==='funnel') parseFunnel(e.target.files[0]);
+    else if(type==='cand') parseCand(e.target.files[0]);
+    else parseEff(e.target.files[0]);
+  });
+}
+
+// ── НАСТРОЙКИ ЭТАПОВ ──
+const ALL_KNOWN_STAGES = [
+  // Воронка Маркиной
+  'Неразобранные','Связаться','Жду ответ — 1','Жду ответ — 2',
+  'Назначить собеседование с рекрутером','Назначено собеседование с рекрутером',
+  'Отказ от рекрутера','Отказ от кандидата после рекрутера',
+  'Отправлен заказчику','Отказ от заказчика после профиля',
+  'Назначить собеседование с заказчиком','Назначено собеседование с заказчиком',
+  'Ожидание фидбека от заказчика','Отказ от заказчика после собеседования',
+  'Отказ от кандидата после заказчика','Тестовое задание',
+  'Назначить финальное собеседование','Назначено финальное собеседование',
+  'Отказ от заказчика на финале','Отказ от кандидата на финале',
+  'Отправлен оффер','Выход на работу','Испытательный срок','Испытательный срок пройден',
+  'Отказ','Резерв','Новые','Приглашение на вакансию','Оффер принят',
+  // Воронка Рябининой (простая)
+  'Подумать','Телефонное интервью','Предложение о работе',
+  // Воронка Рябининой (расширенная — Beyond Taylor и др.)
+  'Интервью с HR','Оценка заказчиком','Интервью с заказчиком','Финальное интервью',
+  'Интервью с лидером домена','Кейс-интервью с заказчиком',
+  // Общие
+  'Оценка','Интервью',
+];
+
+const DEFAULT_GROUPS = {
+  loaded:    {
+    label:'Загружено в воронку', color:'#4a7dbd',
+    stages:['Неразобранные','Новые','Связаться','Жду ответ — 1','Жду ответ — 2',
+      'Приглашение на вакансию','Подумать','Резерв']
+  },
+  rec_sched: {
+    label:'Собес с рекрутером', color:'#5ba08a',
+    stages:['Назначить собеседование с рекрутером','Назначено собеседование с рекрутером',
+      'Отказ от рекрутера','Отказ от кандидата после рекрутера',
+      'Отправлен заказчику','Отказ от заказчика после профиля',
+      'Телефонное интервью','Интервью с HR','Оценка']
+  },
+  cust1:     {
+    label:'Собес с нанимающим — 1', color:'#3d8c6e',
+    stages:['Назначить собеседование с заказчиком','Назначено собеседование с заказчиком',
+      'Ожидание фидбека от заказчика','Отказ от заказчика после собеседования',
+      'Отказ от кандидата после заказчика','Интервью с заказчиком','Оценка заказчиком','Интервью']
+  },
+  cust2:     {
+    label:'Собес с нанимающим — 2', color:'#2d6a52',
+    stages:['Тестовое задание','Назначить финальное собеседование','Назначено финальное собеседование',
+      'Отказ от заказчика на финале','Отказ от кандидата на финале',
+      'Финальное интервью','Интервью с лидером домена','Кейс-интервью с заказчиком','Техническое интервью']
+  },
+  offer:     {
+    label:'Оффер / выход', color:'#1a4a36',
+    stages:['Предложение о работе','Отправлен оффер','Оффер принят',
+      'Выход на работу','Испытательный срок','Испытательный срок пройден']
+  },
+  rejected:  {
+    label:'Отказы', color:'#b54a2a',
+    stages:['Отказ']
+  },
+};
+
+const DASHBOARD_VERSION = '2';
+
+function loadGroups(){
+  try {
+    const savedVersion = localStorage.getItem('stageGroupsVersion');
+    if(savedVersion !== DASHBOARD_VERSION) {
+      // новая версия — сбрасываем настройки
+      localStorage.removeItem('stageGroups');
+      localStorage.setItem('stageGroupsVersion', DASHBOARD_VERSION);
+      return JSON.parse(JSON.stringify(DEFAULT_GROUPS));
+    }
+    const saved = localStorage.getItem('stageGroups');
+    if(saved) {
+      const parsed = JSON.parse(saved);
+      Object.keys(DEFAULT_GROUPS).forEach(key=>{
+        if(!parsed[key]) parsed[key] = JSON.parse(JSON.stringify(DEFAULT_GROUPS[key]));
+      });
+      return parsed;
+    }
+  } catch(e){}
+  return JSON.parse(JSON.stringify(DEFAULT_GROUPS));
+}
+function saveGroups(groups){ try{ localStorage.setItem('stageGroups',JSON.stringify(groups)); }catch(e){} }
+function resetStageGroups(){
+  const fresh = JSON.parse(JSON.stringify(DEFAULT_GROUPS));
+  stageGroups = fresh;
+  saveGroups(fresh);
+  renderSettingsUI();
+  applyGroups();
+}
+
+let stageGroups = loadGroups();
+
+function applyGroups(){
+  STAGE_GROUPS.length=0;
+  ['loaded','rec_sched','cust1','cust2','offer','rejected'].forEach(key=>{
+    const g=stageGroups[key];
+    if(!g) return;
+    STAGE_GROUPS.push({key,label:g.label,stages:[...g.stages],color:g.color});
+  });
+  DYN_STAGES.length=0;
+  ['loaded','rec_sched','cust1','cust2','offer'].forEach(key=>{
+    const g=stageGroups[key];
+    if(!g) return;
+    DYN_STAGES.push({label:g.label,stages:[...g.stages],color:g.color});
+  });
+  if(allVacs.length) renderFunnel();
+  if(candData.length){ renderCand(); }
+}
+
+function getAllAssignedStages(){
+  const all=new Set();
+  Object.values(stageGroups).forEach(g=>g.stages.forEach(s=>all.add(s)));
+  return all;
+}
+
+function getUnassignedStages(){
+  // берём все известные + все из загруженных данных
+  const known=new Set(ALL_KNOWN_STAGES);
+  candData.forEach(c=>{if(c.Этап)known.add(c.Этап);});
+  allVacs.forEach(v=>Object.keys(v.stages||{}).forEach(s=>known.add(s)));
+  const assigned=getAllAssignedStages();
+  return [...known].filter(s=>s&&!assigned.has(s));
+}
+
+let draggedStage=null, draggedFrom=null;
+
+function renderSettingsUI(){
+  // НЕ перезагружаем из localStorage — работаем с текущим stageGroups
+  const keys=['loaded','rec_sched','cust1','cust2','offer','rejected'];
+  const container=document.getElementById('stageGroupsUI');
+  container.innerHTML=keys.map(key=>{
+    const g=stageGroups[key];
+    if(!g) return '';
+    const chips=g.stages.map(s=>`
+      <div class="stage-chip" draggable="true" data-stage="${s.replace(/"/g,'&quot;')}" data-from="${key}">
+        <span style="pointer-events:none">${s}</span>
+        <span class="chip-remove" data-key="${key}" data-stage="${s.replace(/"/g,'&quot;')}" style="font-size:11px;color:#aaa;cursor:pointer;margin-left:4px;pointer-events:all;">✕</span>
+      </div>`).join('');
+    return `<div class="group-card">
+      <div class="group-title"><span class="group-dot" style="background:${g.color}"></span>${g.label}</div>
+      <div class="stage-drop-zone" id="dz-${key}" data-key="${key}">${chips}</div>
+    </div>`;
+  }).join('');
+
+  const unassigned=getUnassignedStages();
+  document.getElementById('stageUnassigned').innerHTML=unassigned.map(s=>`
+    <div class="stage-chip" draggable="true" data-stage="${s.replace(/"/g,'&quot;')}" data-from="__unassigned__">
+      <span style="pointer-events:none">${s}</span>
+    </div>`).join('') || '<span style="font-size:12px;color:#aaa;">Все этапы распределены</span>';
+
+  // вешаем события
+  container.querySelectorAll('.stage-chip').forEach(el=>{
+    el.addEventListener('dragstart',e=>{
+      isDraggingChip=true;
+      draggedStage=el.dataset.stage; draggedFrom=el.dataset.from;
+      el.style.opacity='0.5';
+    });
+    el.addEventListener('dragend',e=>{ isDraggingChip=false; el.style.opacity=''; draggedStage=null; });
+  });
+  document.getElementById('stageUnassigned').querySelectorAll('.stage-chip').forEach(el=>{
+    el.addEventListener('dragstart',e=>{ isDraggingChip=true; draggedStage=el.dataset.stage; draggedFrom='__unassigned__'; el.style.opacity='0.5'; });
+    el.addEventListener('dragend',e=>{ isDraggingChip=false; el.style.opacity=''; draggedStage=null; });
+  });
+  container.querySelectorAll('.stage-drop-zone').forEach(zone=>{
+    zone.addEventListener('dragover',e=>{ e.preventDefault(); zone.classList.add('drag-over'); });
+    zone.addEventListener('dragleave',e=>{ zone.classList.remove('drag-over'); });
+    zone.addEventListener('drop',e=>{ e.preventDefault(); zone.classList.remove('drag-over'); dropStage(zone.dataset.key); });
+  });
+  document.getElementById('stageUnassigned').addEventListener('dragover',e=>e.preventDefault());
+  document.getElementById('stageUnassigned').addEventListener('drop',e=>{ e.preventDefault(); dropStage('__unassigned__'); });
+  container.querySelectorAll('.chip-remove').forEach(btn=>{
+    btn.addEventListener('click',e=>{ e.stopPropagation(); removeFromGroup(btn.dataset.key, btn.dataset.stage); });
+  });
+}
+
+function dropStage(targetKey){
+  if(!draggedStage) return;
+  if(draggedFrom!=='__unassigned__' && stageGroups[draggedFrom])
+    stageGroups[draggedFrom].stages=stageGroups[draggedFrom].stages.filter(s=>s!==draggedStage);
+  if(targetKey!=='__unassigned__' && stageGroups[targetKey])
+    if(!stageGroups[targetKey].stages.includes(draggedStage))
+      stageGroups[targetKey].stages.push(draggedStage);
+  saveGroups(stageGroups);
+  applyGroups();
+  renderSettingsUI();
+}
+
+function removeFromGroup(key, stage){
+  if(!stageGroups[key]) return;
+  stageGroups[key].stages=stageGroups[key].stages.filter(s=>s!==stage);
+  saveGroups(stageGroups);
+  applyGroups();
+  renderSettingsUI();
+}
+
+// тултип — позиционирование по курсору
+document.addEventListener('mousemove', e=>{
+  document.querySelectorAll('.tt-wrap:hover .tt').forEach(tt=>{
+    const x=e.clientX, y=e.clientY;
+    const vw=window.innerWidth, vh=window.innerHeight;
+    const w=Math.min(280, vw-20);
+    const left = x+16+w>vw ? x-w-8 : x+16;
+    const top  = y+20+260>vh ? y-260 : y+20;
+    tt.style.left=left+'px';
+    tt.style.top=top+'px';
+    tt.style.width=w+'px';
+  });
+});
+
+// применяем при старте
+applyGroups();
+setDefaultDates();
+
+// ── Автозагрузка из Google Drive ──
+const DRIVE_FILES = {
+  funnel:    '1pSSftzC1CKS4EZp_TjxiaBgshHMB_chK',
+  candidates:'1GAkOwEIU34ytTJ5TeVWZucFLClBpN_UP',
+  efficiency:'1NDA2Cm1MklklWydOuvl4lbU-L9MIjc-1',
+};
+
+function driveUrl(id){
+  return `https://docs.google.com/spreadsheets/d/${id}/export?format=xlsx`;
+}
+
+async function loadFromDrive(){
+  const banner = document.createElement('div');
+  banner.id = 'driveBanner';
+  banner.style = 'position:fixed;bottom:20px;right:20px;background:#1a1a1a;color:#fff;padding:12px 18px;border-radius:8px;font-size:13px;z-index:500;';
+  banner.textContent = '⏳ Загружаю данные из Google Drive...';
+  document.body.appendChild(banner);
+
+  async function fetchFile(id){
+    const url = driveUrl(id);
+    const res = await fetch(url);
+    if(!res.ok) throw new Error('HTTP ' + res.status);
+    const buf = await res.arrayBuffer();
+    return buf;
+  }
+
+  try {
+    banner.textContent = '⏳ Загружаю воронку...';
+    const funnelBuf = await fetchFile(DRIVE_FILES.funnel);
+    const funnelFile = new File([funnelBuf], 'funnel.xlsx');
+    await new Promise(res=>{ const orig=parseFunnel; parseFunnel(funnelFile); setTimeout(res,500); });
+
+    banner.textContent = '⏳ Загружаю кандидатов...';
+    const candBuf = await fetchFile(DRIVE_FILES.candidates);
+    const candFile = new File([candBuf], 'candidates.xlsx');
+    await new Promise(res=>{ parseCand(candFile); setTimeout(res,500); });
+
+    banner.textContent = '⏳ Загружаю эффективность...';
+    const effBuf = await fetchFile(DRIVE_FILES.efficiency);
+    const effFile = new File([effBuf], 'efficiency.xlsx');
+    await new Promise(res=>{ parseEff(effFile); setTimeout(res,500); });
+
+    banner.style.background = '#2d7d4e';
+    banner.textContent = '✓ Данные загружены из Google Drive';
+    setTimeout(()=>banner.remove(), 3000);
+  } catch(err) {
+    banner.style.background = '#b54a2a';
+    banner.textContent = '⚠ Не удалось загрузить из Drive — загрузите файлы вручную';
+    setTimeout(()=>banner.remove(), 5000);
+    console.error('Drive load error:', err);
+  }
+}
+
+// Запускаем автозагрузку
+loadFromDrive();
+</script>
+</body>
+</html>
